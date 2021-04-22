@@ -8,19 +8,26 @@
 import UIKit
 import SwifteriOS
 import CoreML
+import SwiftyJSON
 
-class ViewController: UIViewController {
+class ViewController: UIViewController, UITextFieldDelegate {
 
     @IBOutlet weak var emojiLabel: UILabel!
-    @IBOutlet weak var textView: UITextField!
+    @IBOutlet weak var textField: UITextField!
     @IBOutlet weak var predictButton: UIButton!
 
-    var swifter: Swifter?
+    var swifter: Swifter!
+    var tweetTexts = [String]()
+    var predictionResults = [String]()
+    var sentimentCounter = ["positive":0, "neutral":0, "negative":0]
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        textView.layer.cornerRadius = textView.layer.frame.height/4
+        textField.layer.cornerRadius = textField.layer.frame.height/4
         predictButton.layer.cornerRadius = predictButton.layer.frame.height/4
+        textField.delegate = self
+        predictButton.isEnabled = false
+        textField.addTarget(self, action: #selector(textFieldDidChange(_:)), for: .editingChanged)
 
          if let path = Bundle.main.path(forResource: "Secrets", ofType: "plist"),
             let xml = FileManager.default.contents(atPath: path),
@@ -29,26 +36,74 @@ class ViewController: UIViewController {
          } else {
             fatalError("Could not load secrets")
          }
-//        swifter?.searchTweet(using: "@Apple", lang: "en", count: 100, tweetMode: .extended) { (results, metadata) in
+    }
+    
+    func makePrediction(keyword: String) {
+        
+        tweetTexts.removeAll()
+        predictionResults.removeAll()
+        
+        swifter.searchTweet(using: keyword, lang: "en", count: 100, tweetMode: .extended) { (results, metadata) in
 //            print(results)
-//        } failure: { (error) in
-//            print("Error: \(error)")
-//        }
+            
+            for tweet in results.array! {
+                self.tweetTexts.append(tweet["full_text"].string ?? "")
+            }
+//            print(self.tweetTexts)
+            self.classifyTweets()
+
+        } failure: { (error) in
+            print("Error: \(error)")
+        }
+    }
+    
+    func classifyTweets() {
+        sentimentCounter["positive"]! = 0
+        sentimentCounter["neutral"]! = 0
+        sentimentCounter["negative"]! = 0
         
         do {
             let sentimentClassifer = try TwitterSentimentClassifier(configuration: MLModelConfiguration())
-            let result = try sentimentClassifer.prediction(text: "@Apple is best")
-            print(result.label)
+            for text in tweetTexts {
+                let result = try sentimentClassifer.prediction(text: text)
+                sentimentCounter[result.label]! += 1
+            }
+            print(sentimentCounter)
+            findMostCommonSentiment()
+            
         } catch {
             print(error)
         }
+    }
+    
+    func findMostCommonSentiment() {
+        let pos = sentimentCounter["positive"]!
+        let neu = sentimentCounter["neutral"]!
+        let neg = sentimentCounter["negative"]!
         
-    
-
+        if pos>neu && pos>neg {
+            emojiLabel.text = "😁"
+        } else if neg>pos && neg>neu {
+            emojiLabel.text = "☹️"
+        } else {
+            emojiLabel.text = "😐"
+        }
     }
-
+    
     @IBAction func predictTapped(_ sender: UIButton) {
+        makePrediction(keyword: textField.text!)
     }
     
+    @objc func textFieldDidChange(_ textField: UITextField) {
+        predictButton.isEnabled = textField.text! == "" ? false : true
+    }
+    
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        if textField.text! == "" {
+            return false
+        }
+        makePrediction(keyword: textField.text!)
+        return true
+    }
 }
 
