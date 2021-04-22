@@ -17,9 +17,9 @@ class ViewController: UIViewController, UITextFieldDelegate {
     @IBOutlet weak var predictButton: UIButton!
 
     var swifter: Swifter!
-    var tweetTexts = [String]()
+    let tweetCount = 100
+    var tweetTexts = [TwitterSentimentClassifierInput]()
     var predictionResults = [String]()
-    var sentimentCounter = ["positive":0, "neutral":0, "negative":0]
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -43,11 +43,11 @@ class ViewController: UIViewController, UITextFieldDelegate {
         tweetTexts.removeAll()
         predictionResults.removeAll()
         
-        swifter.searchTweet(using: keyword, lang: "en", count: 100, tweetMode: .extended) { (results, metadata) in
+        swifter.searchTweet(using: keyword, lang: "en", count: tweetCount, tweetMode: .extended) { (results, metadata) in
 //            print(results)
             
             for tweet in results.array! {
-                self.tweetTexts.append(tweet["full_text"].string ?? "")
+                self.tweetTexts.append(TwitterSentimentClassifierInput(text: tweet["full_text"].string ?? ""))
             }
 //            print(self.tweetTexts)
             self.classifyTweets()
@@ -58,36 +58,46 @@ class ViewController: UIViewController, UITextFieldDelegate {
     }
     
     func classifyTweets() {
-        sentimentCounter["positive"]! = 0
-        sentimentCounter["neutral"]! = 0
-        sentimentCounter["negative"]! = 0
+        
+        var sentimentCounter = 0
         
         do {
             let sentimentClassifer = try TwitterSentimentClassifier(configuration: MLModelConfiguration())
-            for text in tweetTexts {
-                let result = try sentimentClassifer.prediction(text: text)
-                sentimentCounter[result.label]! += 1
+            let results = try sentimentClassifer.predictions(inputs: tweetTexts)
+            
+            for result in results {
+                switch result.label {
+                case "positive":
+                    sentimentCounter += 1
+                case "negative":
+                    sentimentCounter -= 1
+                default:
+                    ()
+                }
             }
             print(sentimentCounter)
-            findMostCommonSentiment()
+            findMostCommonSentiment(sentimentCounter)
             
         } catch {
             print(error)
         }
     }
     
-    func findMostCommonSentiment() {
-        let pos = sentimentCounter["positive"]!
-        let neu = sentimentCounter["neutral"]!
-        let neg = sentimentCounter["negative"]!
+    func findMostCommonSentiment(_ sentimentCounter: Int) {
         
-        if pos>neu && pos>neg {
-            emojiLabel.text = "😁"
-        } else if neg>pos && neg>neu {
-            emojiLabel.text = "☹️"
-        } else {
+        switch sentimentCounter {
+        case 20...tweetCount:
+            emojiLabel.text = "🤩"
+        case 10..<20:
+            emojiLabel.text = "😃"
+        case -10..<10:
             emojiLabel.text = "😐"
+        case -20 ..< -10:
+            emojiLabel.text = "☹️"
+        default:
+            emojiLabel.text = "😤"
         }
+        
     }
     
     @IBAction func predictTapped(_ sender: UIButton) {
